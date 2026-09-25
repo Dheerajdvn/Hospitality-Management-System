@@ -1,0 +1,47 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: food-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/hms_food_db
+    username: ${DB_USER:hms_user}
+    password: ${DB_PASSWORD:hms_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: FoodHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+      data-source-properties:
+        options: "-c timezone=UTC"
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+services:
+  hotel-service:
+    url: ${HOTEL_SERVICE_URL:http://localhost:8083}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.hospitality.food: DEBUG
+    org.springframework.web: INFO

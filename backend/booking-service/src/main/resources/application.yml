@@ -1,0 +1,140 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: booking-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/hms_booking_db
+    username: ${DB_USER:hms_user}
+    password: ${DB_PASSWORD:hms_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: BookingHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+      data-source-properties:
+        options: "-c timezone=UTC"
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: hms-booking-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+app:
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+    topics:
+      booking-events: hms.booking.events
+      payment-events: hms.payment.events
+  booking:
+    hold-duration-minutes: 15
+
+
+services:
+  customer-service:
+    url: ${CUSTOMER_SERVICE_URL:http://localhost:8082}
+  room-service:
+    url: ${ROOM_SERVICE_URL:http://localhost:8084}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,circuitbreakers,circuitbreakerevents,retries,retryevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      roomServiceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10000ms
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        record-exceptions:
+          - feign.FeignException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+        ignore-exceptions:
+          - com.hospitality.booking.exception.BadRequestException
+          - com.hospitality.booking.exception.ResourceNotFoundException
+      customerServiceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10000ms
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        record-exceptions:
+          - feign.FeignException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+        ignore-exceptions:
+          - com.hospitality.booking.exception.BadRequestException
+          - com.hospitality.booking.exception.ResourceNotFoundException
+  retry:
+    instances:
+      roomServiceRetry:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - feign.RetryableException
+          - java.io.IOException
+        ignore-exceptions:
+          - com.hospitality.booking.exception.BadRequestException
+          - com.hospitality.booking.exception.ResourceNotFoundException
+      customerServiceRetry:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - feign.RetryableException
+          - java.io.IOException
+        ignore-exceptions:
+          - com.hospitality.booking.exception.BadRequestException
+          - com.hospitality.booking.exception.ResourceNotFoundException
+
+logging:
+  level:
+    com.hospitality.booking: DEBUG
+    org.springframework.web: INFO
+    io.github.resilience4j: DEBUG

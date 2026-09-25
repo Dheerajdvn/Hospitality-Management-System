@@ -1,0 +1,64 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: notification-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/hms_notification_db
+    username: ${DB_USER:hms_user}
+    password: ${DB_PASSWORD:hms_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: NotificationHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+      data-source-properties:
+        options: "-c timezone=UTC"
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: hms-notification-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+app:
+  kafka:
+    enabled: ${KAFKA_ENABLED:false}
+    topics:
+      booking-events: hms.booking.events
+      billing-events: hms.billing.events
+      payment-events: hms.payment.events
+      roomservice-events: hms.roomservice.events
+      inventory-events: hms.inventory.events
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.hospitality.notification: DEBUG
+    org.springframework.web: INFO

@@ -1,0 +1,89 @@
+# =====================================================================
+# Hospitality Management System - Root .gitignore
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# 1. Sensitive Credentials & Secrets (Strictly Blocked from Git)
+# ---------------------------------------------------------------------
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.pkcs12
+*.jks
+*.keystore
+*secret*
+*credential*
+credentials.json
+client_secret*.json
+service-account*.json
+id_rsa*
+id_ed25519*
+known_hosts
+*.cert
+*.crt
+
+# ---------------------------------------------------------------------
+# 2. Node.js & Frontend Artifacts
+# ---------------------------------------------------------------------
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.eslintcache
+.vite/
+
+# ---------------------------------------------------------------------
+# 3. Java & Maven Build Artifacts
+# ---------------------------------------------------------------------
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# ---------------------------------------------------------------------
+# 4. Logs, Runtime & Database Dumps
+# ---------------------------------------------------------------------
+logs/
+**/logs/
+*.log
+dump.rdb
+*.pid
+*.seed
+*.pid.lock
+
+# ---------------------------------------------------------------------
+# 5. IDE & OS Generated Files
+# ---------------------------------------------------------------------
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

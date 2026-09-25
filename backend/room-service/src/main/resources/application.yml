@@ -1,0 +1,86 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: room-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/hms_room_db
+    username: ${DB_USER:hms_user}
+    password: ${DB_PASSWORD:hms_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: RoomHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+      data-source-properties:
+        options: "-c timezone=UTC"
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+services:
+  hotel-service:
+    url: ${HOTEL_SERVICE_URL:http://localhost:8083}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,circuitbreakers,circuitbreakerevents,retries,retryevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      hotelServiceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10000ms
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        record-exceptions:
+          - feign.FeignException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+        ignore-exceptions:
+          - com.hospitality.room.exception.BadRequestException
+          - com.hospitality.room.exception.ResourceNotFoundException
+  retry:
+    instances:
+      hotelServiceRetry:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - feign.RetryableException
+          - java.io.IOException
+        ignore-exceptions:
+          - com.hospitality.room.exception.BadRequestException
+          - com.hospitality.room.exception.ResourceNotFoundException
+
+logging:
+  level:
+    com.hospitality.room: DEBUG
+    org.springframework.web: INFO
+    io.github.resilience4j: DEBUG
