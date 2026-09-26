@@ -62,3 +62,13 @@ logging:
   level:
     com.hospitality.notification: DEBUG
     org.springframework.web: INFO
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+

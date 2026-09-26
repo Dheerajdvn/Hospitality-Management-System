@@ -13,6 +13,7 @@ docker compose -f "$ROOT_DIR/infrastructure/docker/docker-compose-infra.yml" up 
 
 # 2. Launch Backend Microservices
 services=(
+    "eureka-server:8761:backend/eureka-server"
     "auth-service:8081:backend/auth-service"
     "customer-service:8082:backend/customer-service"
     "hotel-service:8083:backend/hotel-service"

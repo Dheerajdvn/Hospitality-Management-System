@@ -14,6 +14,8 @@ public interface CustomerService {
 
     CustomerResponse getCustomerByUserId(Long userId);
 
+    CustomerResponse getOrCreateCustomerByUserId(Long userId, String email, String username);
+
     CustomerResponse updateCustomer(Long id, CustomerUpdateRequest request);
 
     List<CustomerResponse> getAllCustomers();

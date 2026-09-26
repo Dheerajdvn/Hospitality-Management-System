@@ -29,9 +29,9 @@ public class OperationsEventConsumer {
         log.info("Received room service event from Kafka: {}", eventPayload);
         try {
             JsonNode root = objectMapper.readTree(eventPayload);
-            Long requestId = root.path("requestId").asLong();
-            String bookingReference = root.path("bookingReference").asText();
-            Long customerId = root.path("customerId").asLong();
+            Long requestId = root.has("orderId") ? root.path("orderId").asLong() : root.path("requestId").asLong();
+            String bookingReference = root.has("orderNumber") ? root.path("orderNumber").asText() : root.path("bookingReference").asText();
+            Long customerId = root.has("customerId") ? root.path("customerId").asLong() : root.path("bookingId").asLong();
             String serviceType = root.path("requestType").asText(root.path("orderType").asText("ROOM_SERVICE"));
 
             notificationService.handleRoomServiceRequested(requestId, bookingReference, customerId, serviceType);

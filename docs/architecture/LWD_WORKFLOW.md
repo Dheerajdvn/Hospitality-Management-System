@@ -46,6 +46,7 @@ Each Spring Boot microservice in the Hospitality Management System follows stric
 | **Cache-Aside Pattern** | `HotelServiceImpl` + Redis `@Cacheable` | Cache lookup before SQL; cache invalidation via `@CacheEvict` on state change. |
 | **Optimistic Concurrency Pattern** | `@Version private Long version;` on `Room`, `Bill`, `InventoryItem` | Prevents lost updates under high concurrency without pessimistic row locking. |
 | **Specification Pattern** | `HotelSpecification.java`, `FoodSpecification.java` | Dynamic multi-criteria search filtering without query string concatenation. |
+| **Service Discovery Pattern** | `EurekaServerApplication`, `EurekaClient`, `lb://` routing | Client-side dynamic load balancing & self-healing instance discovery across all 10 microservices. |
 
 ---
 

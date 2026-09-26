@@ -10,7 +10,7 @@ Write-Host "====================================================================
 Write-Host " Stopping Grand Luxe Hospitality Microservices & Frontend" -ForegroundColor Yellow
 Write-Host "======================================================================" -ForegroundColor Cyan
 
-$ports = @(8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 5173)
+$ports = @(8761, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090, 5173)
 
 foreach ($port in $ports) {
     $connections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
@@ -19,9 +19,9 @@ foreach ($port in $ports) {
         foreach ($p in $pids) {
             try {
                 Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
-                Write-Host " - Terminated process $p listening on port :$port" -ForegroundColor Green
+                Write-Host " - Terminated process $($p) listening on port :$($port)" -ForegroundColor Green
             } catch {
-                Write-Host " - Could not terminate PID $p: $_" -ForegroundColor Red
+                Write-Host " - Could not terminate PID $($p): $_" -ForegroundColor Red
             }
         }
     } else {

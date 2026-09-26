@@ -9,7 +9,7 @@ Write-Host "====================================================================
 $root = $PSScriptRoot
 
 # 1. Verify Docker Infrastructure (PostgreSQL 16, Redis 7 & Apache Kafka KRaft)
-Write-Host "`n[1/3] Verifying Infrastructure Containers..." -ForegroundColor Yellow
+Write-Host "`n[1/4] Verifying Infrastructure Containers..." -ForegroundColor Yellow
 $pgContainer = docker ps --filter "name=hms-postgres" --format "{{.Status}}"
 $redisContainer = docker ps --filter "name=hms-redis" --format "{{.Status}}"
 $kafkaContainer = docker ps --filter "name=hms-kafka" --format "{{.Status}}"
@@ -30,8 +30,27 @@ if (-not $pgContainer -or -not $redisContainer -or -not $kafkaContainer) {
     Write-Host " - Kafka 3.7 KRaft (Port 9092): RUNNING" -ForegroundColor Green
 }
 
-# 2. Launch Backend Microservices
-Write-Host "`n[2/3] Launching Java 21 / Spring Boot 3 Microservices in Background..." -ForegroundColor Yellow
+# 2. Launch Netflix Eureka Discovery Server (:8761)
+Write-Host "`n[2/4] Launching Netflix Eureka Discovery Server (:8761)..." -ForegroundColor Yellow
+$eurekaPort = Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue
+if ($eurekaPort) {
+    Write-Host " - eureka-server already listening on port :8761" -ForegroundColor Green
+} else {
+    Write-Host " - Starting eureka-server (:8761)..." -ForegroundColor Cyan
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/k title HMS: eureka-server && mvn spring-boot:run" -WorkingDirectory "$root/backend/eureka-server" -WindowStyle Minimized
+    Write-Host " - Waiting for eureka-server to initialize on port :8761..." -ForegroundColor DarkGray
+    $retries = 0
+    while (-not (Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue) -and $retries -lt 30) {
+        Start-Sleep -Seconds 1
+        $retries++
+    }
+    if (Get-NetTCPConnection -LocalPort 8761 -ErrorAction SilentlyContinue) {
+        Write-Host " - eureka-server is UP and listening on :8761" -ForegroundColor Green
+    }
+}
+
+# 3. Launch Backend Microservices
+Write-Host "`n[3/4] Launching Java 21 / Spring Boot 3 Microservices in Background..." -ForegroundColor Yellow
 
 # Core business microservices
 $coreServices = @(
@@ -53,7 +72,8 @@ foreach ($svc in $coreServices) {
         Write-Host " - $($svc.Name) already listening on port :$($svc.Port)" -ForegroundColor Green
     } else {
         Write-Host " - Starting $($svc.Name) (: $($svc.Port))..." -ForegroundColor Cyan
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c mvn spring-boot:run" -WorkingDirectory "$root/$($svc.Dir)" -WindowStyle Hidden
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/k title HMS: $($svc.Name) && mvn spring-boot:run" -WorkingDirectory "$root/$($svc.Dir)" -WindowStyle Minimized
+        Start-Sleep -Milliseconds 800
     }
 }
 
@@ -63,14 +83,14 @@ if ($gatewayPort) {
     Write-Host " - api-gateway already listening on port :8080" -ForegroundColor Green
 } else {
     Write-Host " - Starting api-gateway (:8080)..." -ForegroundColor Cyan
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/c mvn spring-boot:run" -WorkingDirectory "$root/backend/api-gateway" -WindowStyle Hidden
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/k title HMS: api-gateway && mvn spring-boot:run" -WorkingDirectory "$root/backend/api-gateway" -WindowStyle Minimized
 }
 
-# 3. Launch Frontend Portal
-Write-Host "`n[3/3] Launching React 18 / Vite Frontend Portal..." -ForegroundColor Yellow
+# 4. Launch Frontend Portal
+Write-Host "`n[4/4] Launching React 18 / Vite Frontend Portal..." -ForegroundColor Yellow
 $frontendPort = Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue
 if (-not $frontendPort) {
-    Start-Process -FilePath "npm" -ArgumentList "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173" -WorkingDirectory "$root/frontend/hospitality-ui" -WindowStyle Hidden
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/k title HMS: Frontend-UI && npm run dev -- --host 127.0.0.1 --port 5173" -WorkingDirectory "$root/frontend/hospitality-ui" -WindowStyle Minimized
     Write-Host " - Frontend launched on http://127.0.0.1:5173" -ForegroundColor Green
 } else {
     Write-Host " - Frontend already active on http://127.0.0.1:5173" -ForegroundColor Green
@@ -79,6 +99,7 @@ if (-not $frontendPort) {
 Write-Host "`n======================================================================" -ForegroundColor Green
 Write-Host " SYSTEM READY! Access Portal: http://localhost:5173" -ForegroundColor Yellow
 Write-Host " API Gateway Entry:          http://localhost:8080" -ForegroundColor Cyan
+Write-Host " Eureka Discovery Dashboard: http://localhost:8761" -ForegroundColor Magenta
 Write-Host " Default Admin:              admin / admin123" -ForegroundColor White
 Write-Host " Default Guest:              customer / customer123" -ForegroundColor White
 Write-Host "======================================================================" -ForegroundColor Green

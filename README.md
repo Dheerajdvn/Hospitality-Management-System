@@ -16,9 +16,10 @@ The platform provides end-to-end capabilities:
 
 ## 2. Technology Stack
 
-- **Backend**: Java 21, Spring Boot 3.3.4, Spring Cloud 2023.0.3, Spring Data JPA / Hibernate 6, Spring Cloud Gateway (Netty / WebFlux), Spring Security 6, JJWT 0.12.5 (HS512), OpenFeign with Apache HttpClient 5.
+- **Backend**: Java 21, Spring Boot 3.3.4, Spring Cloud 2023.0.3 (Netflix Eureka Discovery Server, OpenFeign with LoadBalancer), Spring Data JPA / Hibernate 6, Spring Cloud Gateway (Netty / WebFlux), Spring Security 6, JJWT 0.12.5 (HS512), Apache HttpClient 5.
 - **Persistence & Caching**: PostgreSQL 16 (10 isolated databases), Redis 7 Standalone (Cache-Aside pattern).
 - **Messaging & EDA**: Apache Kafka 3.7 (KRaft mode, 5 canonical topics with 3 partitions each).
+- **Service Discovery**: Spring Cloud Netflix Eureka Server (Port 8761) with dynamic load-balanced `lb://` routing.
 - **DevOps & Observability**: `spring-boot-devtools` (live-reload), `micrometer-registry-prometheus` (Prometheus metrics scraping via `/actuator/prometheus`), Spring Boot Actuator, PowerShell multi-tier health inspector.
 - **Frontend**: React 18, Vite, Lucide Icons, Axios, Luxury Dark & Gold Glassmorphism Design System.
 - **Testing**: JUnit 5, Mockito 5, Reactor Test.
@@ -27,11 +28,12 @@ The platform provides end-to-end capabilities:
 
 ## 3. Microservices Ports & Roles
 
-All external client traffic routes through the **API Gateway on Port 8080**:
+All external client traffic routes through the **API Gateway on Port 8080**, which dynamically resolves microservice endpoints through **Netflix Eureka Server on Port 8761**:
 
 | Service | Port | Database / Engine | Key Architectural Responsibility |
 |---|---|---|---|
-| **api-gateway** | **8080** | Netty / Reactive WebFlux | Perimeter reverse proxy, JWT verification, CORS policy, user context header injection |
+| **eureka-server** | **8761** | In-Memory Registry | Spring Cloud Netflix Eureka Discovery Server, dynamic service registration & heartbeat health tracking |
+| **api-gateway** | **8080** | Netty / Reactive WebFlux | Perimeter reverse proxy, JWT verification, CORS policy, user context header injection, Eureka dynamic `lb://` routing |
 | **auth-service** | **8081** | PostgreSQL (`hms_auth_db`) | RBAC, BCrypt hashing, 512-bit HS512 JWT issuance |
 | **customer-service** | **8082** | PostgreSQL (`hms_customer_db`) | Guest profiles, KYC validation endpoint |
 | **hotel-service** | **8083** | PostgreSQL (`hms_hotel_db`) + Redis 7 | Hotel catalog, JPA Specifications, Redis Cache-Aside |
@@ -81,7 +83,7 @@ docker compose -f infrastructure/docker/docker-compose-infra.yml up -d
 ```
 
 ### Step 2: One-Click Startup
-To launch all 11 backend microservices and the React frontend:
+To launch the Netflix Eureka Discovery Server, all 10 domain microservices, the API Gateway, and the React frontend:
 
 **On Windows (PowerShell):**
 ```powershell
@@ -95,20 +97,21 @@ chmod +x start-all.sh stop-all.sh
 ```
 
 ### Step 3: Multi-Tier Health Inspection
-To verify all infrastructure containers, Kafka topics, Actuator endpoints, and the frontend in one command:
+To verify all infrastructure containers, Eureka Discovery Server, Kafka topics, Actuator endpoints, and the frontend in one command:
 ```powershell
 .\check-health.ps1
 ```
 
 ### Step 4: Access the Application
 - **Frontend Portal**: [http://localhost:5173](http://localhost:5173)
+- **Eureka Discovery Dashboard**: [http://localhost:8761](http://localhost:8761)
 - **API Gateway Entry**: [http://localhost:8080](http://localhost:8080)
 - **Default Admin Account**: `admin` / `admin123`
 - **Default Guest Account**: `customer` / `customer123`
 
 ### Step 5: Stop Services
 ```powershell
-# Stop microservices and frontend:
+# Stop microservices, gateway, eureka and frontend:
 .\stop-all.ps1
 
 # Stop everything including Docker containers:
@@ -120,8 +123,9 @@ To verify all infrastructure containers, Kafka topics, Actuator endpoints, and t
 ## 7. Key Design Decisions
 
 1. **Edge Authentication & Header Mutation**: The Gateway intercepts incoming traffic, validates JWT signatures, and injects trusted `X-User-Id`, `X-User-Email`, `X-User-Roles`, `X-User-Role`, and `X-User-Name` headers downstream, eliminating redundant cryptographic parsing in downstream services.
-2. **Double-Booking Prevention**: Mathematical date overlap query (`checkIn < :newCheckOut AND checkOut > :newCheckIn`) inside `@Transactional` blocks, backed by Hibernate `@Version` optimistic locking on rooms.
-3. **Partitioned Ordering in Kafka**: Payment and booking events use `bookingId` as the message key to guarantee strict chronological event sequencing per reservation.
-4. **Immutability in Dining Orders**: In-room dining line items store frozen snapshots of `unitPrice` and `foodItemName` at the moment of order placement to guarantee historical financial accuracy.
-5. **N+1 Prevention**: Room Service Management uses Food Service's `POST /api/v1/food/batch` endpoint to resolve entire dining carts in a single round-trip.
-6. **Windows Timezone Resilience**: Configured UTC timezones in every service's Hikari connection properties and static initializer blocks to permanently resolve the Windows `Asia/Calcutta` JDBC driver defect.
+2. **Dynamic Service Registry & Discovery**: Spring Cloud Netflix Eureka Server on Port 8761 enables dynamic registration and heartbeat monitoring. Spring Cloud Gateway and Feign resolve routes dynamically using `lb://<service-name>` virtual URIs without hardcoded network coordinates.
+3. **Double-Booking Prevention**: Mathematical date overlap query (`checkIn < :newCheckOut AND checkOut > :newCheckIn`) inside `@Transactional` blocks, backed by Hibernate `@Version` optimistic locking on rooms.
+4. **Partitioned Ordering in Kafka**: Payment and booking events use `bookingId` as the message key to guarantee strict chronological event sequencing per reservation.
+5. **Immutability in Dining Orders**: In-room dining line items store frozen snapshots of `unitPrice` and `foodItemName` at the moment of order placement to guarantee historical financial accuracy.
+6. **N+1 Prevention**: Room Service Management uses Food Service's `POST /api/v1/food/batch` endpoint to resolve entire dining carts in a single round-trip.
+7. **Windows Timezone Resilience**: Configured UTC timezones in every service's Hikari connection properties and static initializer blocks to permanently resolve the Windows `Asia/Calcutta` JDBC driver defect.

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/apiClient';
-import { X, Calendar, Users, ShieldCheck, CheckCircle2, BedDouble } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { X, Calendar, Users, ShieldCheck, CheckCircle2, BedDouble, AlertCircle } from 'lucide-react';
 
 const RoomBookingModal = ({ hotel, onClose, onBookingSuccess }) => {
+  const { user } = useAuth();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRoom, setSelectedRoom] = useState(null);
+  const [bookingError, setBookingError] = useState(null);
 
   // Default dates: check-in today, check-out in 2 days
   const todayStr = new Date().toISOString().split('T')[0];
@@ -50,9 +53,20 @@ const RoomBookingModal = ({ hotel, onClose, onBookingSuccess }) => {
 
   const handleBookNow = async () => {
     setSubmitting(true);
+    setBookingError(null);
     try {
+      let customerId = user?.id || 1;
+      try {
+        if (user?.id) {
+          const profile = await api.getCustomerByUserId(user.id);
+          if (profile?.id) customerId = profile.id;
+        }
+      } catch {
+        // proceed with customerId
+      }
+
       const payload = {
-        customerId: 3, // Default authenticated customer ID
+        customerId,
         roomId: selectedRoom?.id || 1,
         checkInDate: checkIn,
         checkOutDate: checkOut,
@@ -92,6 +106,7 @@ const RoomBookingModal = ({ hotel, onClose, onBookingSuccess }) => {
       }
     } catch (err) {
       console.error('Reservation error:', err);
+      setBookingError(err.message || 'Reservation hold could not be placed. Please verify dates or select another room.');
     } finally {
       setSubmitting(false);
     }
@@ -135,6 +150,25 @@ const RoomBookingModal = ({ hotel, onClose, onBookingSuccess }) => {
             <X size={18} />
           </button>
         </div>
+
+        {/* Error Alert */}
+        {bookingError && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid var(--danger)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            margin: '16px 28px 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: '#fca5a5',
+            fontSize: '0.88rem'
+          }}>
+            <AlertCircle size={18} color="var(--danger)" />
+            <span>{bookingError}</span>
+          </div>
+        )}
 
         {bookingPlaced ? (
           /* Confirmation Success State */

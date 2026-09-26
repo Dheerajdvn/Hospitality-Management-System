@@ -84,3 +84,13 @@ logging:
     com.hospitality.room: DEBUG
     org.springframework.web: INFO
     io.github.resilience4j: DEBUG
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+

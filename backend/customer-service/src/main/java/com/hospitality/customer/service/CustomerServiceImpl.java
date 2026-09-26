@@ -78,8 +78,30 @@ public class CustomerServiceImpl implements CustomerService {
     @Transactional(readOnly = true)
     public CustomerResponse getCustomerByUserId(Long userId) {
         CustomerProfile profile = customerRepository.findByUserId(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found with userId: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Customer profile not found with userId: " + userId));
         return mapToResponse(profile);
+    }
+
+    @Override
+    @Transactional
+    public CustomerResponse getOrCreateCustomerByUserId(Long userId, String email, String username) {
+        return customerRepository.findByUserId(userId)
+                .map(this::mapToResponse)
+                .orElseGet(() -> {
+                    log.info("Auto-provisioning baseline customer profile for userId: {}", userId);
+                    String resolvedEmail = (email != null && !email.isBlank()) ? email.toLowerCase() : "user" + userId + "@hospitality.local";
+                    String name = (username != null && !username.isBlank()) ? username : "Guest" + userId;
+                    CustomerProfile newProfile = CustomerProfile.builder()
+                            .userId(userId)
+                            .firstName(name)
+                            .lastName("Member")
+                            .email(resolvedEmail)
+                            .phoneNumber("+1-555-0" + String.format("%03d", Math.abs(userId % 1000)))
+                            .isActive(true)
+                            .build();
+                    CustomerProfile saved = customerRepository.save(newProfile);
+                    return mapToResponse(saved);
+                });
     }
 
     @Override

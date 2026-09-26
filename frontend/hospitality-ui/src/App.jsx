@@ -82,6 +82,7 @@ function AppContent() {
             setCart={setCart} 
             onOrderPlaced={() => {}}
             onNavigate={(tab) => setActiveTab(tab)}
+            bookings={bookings}
           />
         )}
 

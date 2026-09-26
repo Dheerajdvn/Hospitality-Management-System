@@ -12,6 +12,7 @@
 > At the edge sits the **Spring Cloud API Gateway (:8080)** running on Netty/WebFlux. It acts as the single reverse proxy, enforcing CORS and edge JWT authentication.
 >
 > Downstream, we separate core business domains:
+> - **eureka-server (:8761)**: Centralized Netflix Eureka Discovery Registry providing dynamic load balancing and instance health tracking.
 > - **auth-service (:8081)**: Manages RBAC and signs 512-bit HS512 JWTs.
 > - **customer-service (:8082)**: Manages guest records and KYC.
 > - **hotel-service (:8083)**: Manages hotel catalogs with a Redis 7 Cache-Aside layer.
@@ -22,7 +23,7 @@
 > - **inventory-service (:8089)**: Manages stock movement ledgers and low-stock reorder thresholds.
 > - **notification-service (:8090)**: Handles multi-channel SMS and email notifications.
 >
-> Communication is split: **OpenFeign with Apache HttpClient 5** for real-time synchronous queries, and **Kafka / asynchronous events** for decoupled side-effects like payment confirmations and email notifications."*
+> Communication is split: **OpenFeign with Apache HttpClient 5 & Spring Cloud LoadBalancer** for real-time synchronous queries, and **Kafka / asynchronous events** for decoupled side-effects like payment confirmations and email notifications."*
 
 ---
 
@@ -34,6 +35,16 @@
 > 1. Each microservice completely encapsulates its domain schema.
 > 2. Schema migrations (`ALTER TABLE`) in `food-service` cannot break `billing-service`.
 > 3. Each service can be scaled independently or backed up without taking down other domains."*
+
+---
+
+### Q3: "How do services discover each other dynamically without hardcoding IP addresses or ports?"
+> **Answer**:
+> *"We integrated **Spring Cloud Netflix Eureka Server (:8761)** along with **Spring Cloud LoadBalancer**:
+> 1. At startup, each microservice registers its network coordinates (`instance-id`, IP, port) with the Eureka server and transmits heartbeats every 30 seconds.
+> 2. The API Gateway routes incoming perimeter traffic dynamically using virtual URIs (`lb://<service-name>`) instead of static localhost URLs.
+> 3. Inter-service OpenFeign clients also resolve endpoints via Eureka discovery.
+> 4. If an instance experiences an outage, Eureka evicts it after missed renewal windows, ensuring traffic is only routed to healthy nodes."*
 
 ---
 

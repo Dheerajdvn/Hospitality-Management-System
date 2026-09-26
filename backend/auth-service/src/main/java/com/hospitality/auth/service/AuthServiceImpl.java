@@ -139,18 +139,11 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private RoleName resolveRole(String roleStr) {
-        if (roleStr == null || roleStr.isBlank()) {
-            return RoleName.ROLE_CUSTOMER;
+        // Enforce least privilege: public registration always creates ROLE_CUSTOMER.
+        // Administrative or staff roles cannot be self-assigned during registration.
+        if (roleStr != null && !roleStr.isBlank() && !"CUSTOMER".equalsIgnoreCase(roleStr) && !"ROLE_CUSTOMER".equalsIgnoreCase(roleStr)) {
+            log.warn("Disallowed role '{}' requested in public registration. Enforcing ROLE_CUSTOMER.", roleStr);
         }
-        try {
-            String formatted = roleStr.toUpperCase();
-            if (!formatted.startsWith("ROLE_")) {
-                formatted = "ROLE_" + formatted;
-            }
-            return RoleName.valueOf(formatted);
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid role requested: {}. Falling back to ROLE_CUSTOMER", roleStr);
-            return RoleName.ROLE_CUSTOMER;
-        }
+        return RoleName.ROLE_CUSTOMER;
     }
 }

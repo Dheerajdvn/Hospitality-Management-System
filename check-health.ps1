@@ -53,6 +53,7 @@ if ($kafkaContainer) {
 # 3. Check Microservices & Actuator Health
 Write-Host "`n[3] Backend Microservices Fleet & Actuator Health" -ForegroundColor Yellow
 $services = @(
+    @{ Name = "Eureka Discovery Server"; Port = 8761; Path = "/actuator/health" },
     @{ Name = "API Gateway";            Port = 8080; Path = "/actuator/health" },
     @{ Name = "Auth Service";           Port = 8081; Path = "/actuator/health" },
     @{ Name = "Customer Service";       Port = 8082; Path = "/actuator/health" },

@@ -72,7 +72,16 @@ const UserDashboard = ({ bookings = [], onNavigate }) => {
 
   useEffect(() => {
     const loadCustomerBookings = async () => {
-      const data = await api.getBookingsByCustomer(user?.id || 3);
+      let customerId = user?.id || 1;
+      try {
+        if (user?.id) {
+          const profile = await api.getCustomerByUserId(user.id);
+          if (profile?.id) customerId = profile.id;
+        }
+      } catch {
+        // use customerId
+      }
+      const data = await api.getBookingsByCustomer(customerId);
       if (data && data.length > 0) {
         const mapped = data.map((b) => ({
           id: b.id,

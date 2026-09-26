@@ -64,6 +64,13 @@ public class BookingServiceImpl implements BookingService {
         RoomDetailResponse room = fetchAndValidateRoom(request.getRoomId(), request.getNumberOfGuests());
 
         // 4. Concurrency & Date Overlap Check
+        // Acquire transaction-scoped advisory lock on roomId to serialize concurrent booking attempts
+        try {
+            bookingRepository.acquireRoomAdvisoryLock(request.getRoomId());
+        } catch (Exception ex) {
+            log.debug("Advisory lock acquisition skipped or non-Postgres DB: {}", ex.getMessage());
+        }
+
         List<Booking> conflicts = bookingRepository.findConflictingBookings(
                 request.getRoomId(),
                 request.getCheckInDate(),

@@ -30,13 +30,31 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<CustomerResponse>> getCustomerById(@PathVariable("id") Long id) {
+    public ResponseEntity<ApiResponse<CustomerResponse>> getCustomerById(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "X-User-Id", required = false) Long callerUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String callerRoles) {
         CustomerResponse response = customerService.getCustomerById(id);
+        boolean isAdmin = callerRoles != null && callerRoles.contains("ROLE_ADMIN");
+        boolean isOwner = callerUserId != null && callerUserId.equals(response.getUserId());
+        if (!isAdmin && !isOwner && callerUserId != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access denied: You are not authorized to view this customer profile"));
+        }
         return ResponseEntity.ok(ApiResponse.success("Customer profile retrieved", response));
     }
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<ApiResponse<CustomerResponse>> getCustomerByUserId(@PathVariable("userId") Long userId) {
+    public ResponseEntity<ApiResponse<CustomerResponse>> getCustomerByUserId(
+            @PathVariable("userId") Long userId,
+            @RequestHeader(value = "X-User-Id", required = false) Long callerUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String callerRoles) {
+        boolean isAdmin = callerRoles != null && callerRoles.contains("ROLE_ADMIN");
+        boolean isOwner = callerUserId != null && callerUserId.equals(userId);
+        if (!isAdmin && !isOwner && callerUserId != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access denied: You are not authorized to view this customer profile"));
+        }
         CustomerResponse response = customerService.getCustomerByUserId(userId);
         return ResponseEntity.ok(ApiResponse.success("Customer profile retrieved by user ID", response));
     }
@@ -44,25 +62,41 @@ public class CustomerController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<CustomerResponse>> getCurrentCustomer(
             @RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail,
+            @RequestHeader(value = "X-User-Name", required = false) String headerName,
             @RequestParam(value = "userId", required = false) Long queryUserId) {
         Long resolvedUserId = headerUserId != null ? headerUserId : queryUserId;
         if (resolvedUserId == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error("User identity not provided in header or parameter"));
         }
-        CustomerResponse response = customerService.getCustomerByUserId(resolvedUserId);
+        CustomerResponse response = customerService.getOrCreateCustomerByUserId(resolvedUserId, headerEmail, headerName);
         return ResponseEntity.ok(ApiResponse.success("Current customer profile", response));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<CustomerResponse>> updateCustomer(
             @PathVariable("id") Long id,
-            @RequestBody CustomerUpdateRequest request) {
+            @RequestBody CustomerUpdateRequest request,
+            @RequestHeader(value = "X-User-Id", required = false) Long callerUserId,
+            @RequestHeader(value = "X-User-Roles", required = false) String callerRoles) {
+        CustomerResponse existing = customerService.getCustomerById(id);
+        boolean isAdmin = callerRoles != null && callerRoles.contains("ROLE_ADMIN");
+        boolean isOwner = callerUserId != null && callerUserId.equals(existing.getUserId());
+        if (!isAdmin && !isOwner && callerUserId != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access denied: You can only update your own profile"));
+        }
         CustomerResponse response = customerService.updateCustomer(id, request);
         return ResponseEntity.ok(ApiResponse.success("Customer profile updated successfully", response));
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<CustomerResponse>>> getAllCustomers() {
+    public ResponseEntity<ApiResponse<List<CustomerResponse>>> getAllCustomers(
+            @RequestHeader(value = "X-User-Roles", required = false) String callerRoles) {
+        if (callerRoles == null || !callerRoles.contains("ROLE_ADMIN")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access denied: Administrator privileges required to list all profiles"));
+        }
         List<CustomerResponse> customers = customerService.getAllCustomers();
         return ResponseEntity.ok(ApiResponse.success("All customer profiles retrieved", customers));
     }

@@ -47,10 +47,7 @@ public class BookingEventConsumer {
         }
     }
 
-    @KafkaListener(topics = {
-            "${app.kafka.topics.billing-events:hms.billing.events}",
-            "${app.kafka.topics.payment-events:hms.payment.events}"
-    }, groupId = "${spring.kafka.consumer.group-id:hms-notification-group}")
+    @KafkaListener(topics = "${app.kafka.topics.payment-events:hms.payment.events}", groupId = "${spring.kafka.consumer.group-id:hms-notification-group}")
     public void consumeBillingEvent(String eventPayload) {
         log.info("Received billing/payment event from Kafka: {}", eventPayload);
         try {

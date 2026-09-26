@@ -9,9 +9,10 @@
 
 ### Architectural Core Principles
 1. **Database-per-Service**: Each microservice strictly owns its dedicated PostgreSQL 16 database. No cross-service database queries or joins are permitted.
-2. **API Gateway as the Single Entry Point**: A Spring Cloud Gateway (Netty / Reactive WebFlux) acts as the reverse proxy, validating 512-bit HS512 JWTs and injecting downstream identity headers.
-3. **Resilience & Fault Tolerance**: Synchronous inter-service calls (OpenFeign) are guarded by **Resilience4j Circuit Breakers**, **Exponential Backoff Retries**, and **Spring Boot Actuator** health telemetry.
-4. **High Concurrency & Audit Integrity**: Concurrency conflicts are mitigated using mathematical date-overlap checks and JPA `@Version` optimistic locking. Audit logs record room status transitions and stock movements immutably.
+2. **Dynamic Service Registry & Discovery**: Spring Cloud Netflix Eureka Server (port 8761) maintains active instance registries and heartbeats. API Gateway and OpenFeign route dynamically using `lb://<service-name>` virtual URIs.
+3. **API Gateway as the Single Entry Point**: A Spring Cloud Gateway (Netty / Reactive WebFlux, port 8080) acts as the reverse proxy, validating 512-bit HS512 JWTs, dynamically resolving downstream instances from Eureka, and injecting downstream identity headers.
+4. **Resilience & Fault Tolerance**: Synchronous inter-service calls (OpenFeign) are guarded by **Resilience4j Circuit Breakers**, **Exponential Backoff Retries**, and **Spring Boot Actuator** health telemetry.
+5. **High Concurrency & Audit Integrity**: Concurrency conflicts are mitigated using mathematical date-overlap checks and JPA `@Version` optimistic locking. Audit logs record room status transitions and stock movements immutably.
 
 ---
 
@@ -23,8 +24,12 @@ graph TB
         UI["React 18 SPA (Vite)<br/>Port: 5173<br/>• Guest Booking & Dining Portal<br/>• Admin Operations Kanban"]
     end
 
+    subgraph DiscoveryLayer["Service Registry & Discovery Tier"]
+        EUREKA["Spring Cloud Netflix Eureka Server<br/>Port: 8761<br/>• Service Registration<br/>• Heartbeat Health Checking<br/>• Dynamic Load Balancing Registry"]
+    end
+
     subgraph GatewayLayer["Edge Security & Routing Tier"]
-        GW["Spring Cloud Gateway<br/>Port: 8080 (Reactive Netty)<br/>• HS512 JWT Validation<br/>• Downstream Header Injection<br/>• Centralized CORS Policy"]
+        GW["Spring Cloud Gateway<br/>Port: 8080 (Reactive Netty)<br/>• HS512 JWT Validation<br/>• Downstream Header Injection<br/>• Centralized CORS Policy<br/>• Dynamic lb:// Routing"]
     end
 
     subgraph ServiceFleet["Microservices Fleet Tier (Spring Boot 3.3.4 / Java 21)"]
@@ -55,16 +60,19 @@ graph TB
     end
 
     UI -->|HTTP / JSON| GW
-    GW --> AUTH
-    GW --> CUST
-    GW --> HOTEL
-    GW --> ROOM
-    GW --> BOOK
-    GW --> FOOD
-    GW --> RSM
-    GW --> BILL
-    GW --> INV
-    GW --> NOTIF
+    GW -.->|Fetch Registry| EUREKA
+    ServiceFleet -.->|Heartbeat Registration| EUREKA
+
+    GW ==>|lb://auth-service| AUTH
+    GW ==>|lb://customer-service| CUST
+    GW ==>|lb://hotel-service| HOTEL
+    GW ==>|lb://room-service| ROOM
+    GW ==>|lb://booking-service| BOOK
+    GW ==>|lb://food-service| FOOD
+    GW ==>|lb://room-service-management| RSM
+    GW ==>|lb://billing-service| BILL
+    GW ==>|lb://inventory-service| INV
+    GW ==>|lb://notification-service| NOTIF
 
     AUTH --> DB_AUTH
     CUST --> DB_CUST
@@ -85,7 +93,8 @@ graph TB
 
 | Microservice | Port | Database Name | Primary Domain Responsibility |
 | :--- | :--- | :--- | :--- |
-| **api-gateway** | `8080` | *None (Stateless)* | Netty reverse proxy, route resolution, JWT auth filter, CORS |
+| **eureka-server** | `8761` | *In-Memory Registry* | Spring Cloud Netflix Eureka Discovery Server, dynamic service registration & heartbeat health tracking |
+| **api-gateway** | `8080` | *None (Stateless)* | Netty reverse proxy, dynamic `lb://` route resolution, JWT auth filter, CORS |
 | **auth-service** | `8081` | `hms_auth_db` | User credentials, BCrypt hashes, roles (`ROLE_CUSTOMER`, `ROLE_ADMIN`, `ROLE_STAFF`), JJWT token generator |
 | **customer-service** | `8082` | `hms_customer_db` | Guest profiles, KYC document tracking, contact info, active status |
 | **hotel-service** | `8083` | `hms_hotel_db` | Hotel property catalog, star ratings, amenities, Redis cache-aside |

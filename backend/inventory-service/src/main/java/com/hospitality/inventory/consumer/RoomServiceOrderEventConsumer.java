@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -46,9 +47,21 @@ public class RoomServiceOrderEventConsumer {
                     String foodItemName = itemNode.path("foodItemName").asText();
                     int quantity = itemNode.path("quantity").asInt(1);
 
-                    // Look up inventory item by name prefix or fallback
-                    Optional<InventoryItem> match = itemRepository.findAll().stream()
-                            .filter(i -> i.getName().toLowerCase().contains(foodItemName.toLowerCase()) ||
+                    // Look up inventory item strictly scoped to the ordering hotel (with fallback)
+                    List<InventoryItem> candidateItems = null;
+                    if (hotelId != null && hotelId > 0) {
+                        candidateItems = itemRepository.findByHotelId(hotelId);
+                    }
+                    if (candidateItems == null || candidateItems.isEmpty()) {
+                        candidateItems = itemRepository.findAll();
+                    }
+                    if (candidateItems == null) {
+                        candidateItems = List.of();
+                    }
+
+                    Optional<InventoryItem> match = candidateItems.stream()
+                            .filter(i -> i.getName().equalsIgnoreCase(foodItemName) ||
+                                         i.getName().toLowerCase().contains(foodItemName.toLowerCase()) ||
                                          foodItemName.toLowerCase().contains(i.getName().toLowerCase()))
                             .findFirst();
 

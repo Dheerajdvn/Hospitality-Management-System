@@ -57,7 +57,7 @@ class RoomServiceOrderEventConsumerTest {
                 .unitCost(new BigDecimal("250.00"))
                 .build();
 
-        when(itemRepository.findAll()).thenReturn(List.of(item));
+        when(itemRepository.findByHotelId(1L)).thenReturn(List.of(item));
 
         String payload = """
                 {
@@ -90,7 +90,7 @@ class RoomServiceOrderEventConsumerTest {
     @Test
     @DisplayName("Should skip stock deduction when no matching inventory item is found")
     void consumeRoomServiceEvent_NoMatchingItem() {
-        when(itemRepository.findAll()).thenReturn(List.of());
+        when(itemRepository.findByHotelId(1L)).thenReturn(List.of());
 
         String payload = """
                 {

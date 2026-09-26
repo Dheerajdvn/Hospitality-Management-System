@@ -27,6 +27,11 @@ import java.util.List;
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final JwtUtils jwtUtils;
+    private static final List<String> ALLOWED_ORIGINS = List.of(
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173"
+    );
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -36,9 +41,26 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         log.debug("API Gateway evaluating request: {} {}", method, path);
 
-        // 1. Whitelist Check
+        // 1. Whitelist Check (Public endpoints bypass JWT verification)
         if (isWhitelisted(path, method)) {
             log.debug("Path '{}' is whitelisted. Bypassing JWT filter.", path);
+            boolean hasSpoofedHeaders = request.getHeaders().containsKey("X-User-Id")
+                    || request.getHeaders().containsKey("X-User-Role")
+                    || request.getHeaders().containsKey("X-User-Roles")
+                    || request.getHeaders().containsKey("X-User-Email")
+                    || request.getHeaders().containsKey("X-User-Name");
+            if (hasSpoofedHeaders) {
+                ServerHttpRequest sanitized = request.mutate()
+                        .headers(httpHeaders -> {
+                            httpHeaders.remove("X-User-Id");
+                            httpHeaders.remove("X-User-Email");
+                            httpHeaders.remove("X-User-Name");
+                            httpHeaders.remove("X-User-Roles");
+                            httpHeaders.remove("X-User-Role");
+                        })
+                        .build();
+                return chain.filter(exchange.mutate().request(sanitized).build());
+            }
             return chain.filter(exchange);
         }
 
@@ -57,7 +79,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return unauthorizedResponse(exchange, "Invalid or expired JWT token");
         }
 
-        // 4. Extract Claims and Mutate Request with Downstream Headers
+        // 4. Extract Claims
         Long userId = jwtUtils.getUserId(token);
         String email = jwtUtils.getEmail(token);
         String username = jwtUtils.getUsername(token);
@@ -67,6 +89,22 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         log.debug("Authenticated user ID: {}, email: {}, username: {}, roles: {}", userId, email, username, rolesStr);
 
+        // 5. Route-level Role-Based Access Control (RBAC) Enforcement
+        if (isAdminOnlyEndpoint(path, method)) {
+            if (roles == null || !roles.contains("ROLE_ADMIN")) {
+                log.warn("Access denied (403): User {} with roles '{}' attempted access to admin endpoint: {} {}",
+                        userId, rolesStr, method, path);
+                return forbiddenResponse(exchange, "Access denied: Administrator privileges required.");
+            }
+        } else if (isStaffOrAdminEndpoint(path, method)) {
+            if (roles == null || (!roles.contains("ROLE_ADMIN") && !roles.contains("ROLE_STAFF"))) {
+                log.warn("Access denied (403): User {} with roles '{}' attempted access to staff/admin endpoint: {} {}",
+                        userId, rolesStr, method, path);
+                return forbiddenResponse(exchange, "Access denied: Staff or Administrator privileges required.");
+            }
+        }
+
+        // 6. Mutate Request with Downstream Headers (overwriting any client-supplied spoofed headers)
         ServerHttpRequest mutatedRequest = request.mutate()
                 .header("X-User-Id", userId != null ? String.valueOf(userId) : "")
                 .header("X-User-Email", email != null ? email : "")
@@ -84,8 +122,10 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return true;
         }
 
-        // Public auth endpoints
-        if (path.startsWith("/api/v1/auth")) {
+        // Public auth endpoints (/api/v1/auth/me is protected)
+        if (path.equals("/api/v1/auth/login") ||
+            path.equals("/api/v1/auth/register") ||
+            path.equals("/api/v1/auth/validate")) {
             return true;
         }
 
@@ -106,7 +146,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return true;
         }
 
-        // Public read-only browsing
+        // Public read-only browsing (hotels, rooms, food catalog)
         if (HttpMethod.GET.equals(method)) {
             if (path.startsWith("/api/v1/hotels") ||
                 path.startsWith("/api/v1/rooms") ||
@@ -118,26 +158,86 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return false;
     }
 
+    private boolean isAdminOnlyEndpoint(String path, HttpMethod method) {
+        // Hotel catalog modifications
+        if (path.startsWith("/api/v1/hotels") && (HttpMethod.POST.equals(method) || HttpMethod.PUT.equals(method) || HttpMethod.DELETE.equals(method))) {
+            return true;
+        }
+        // Room deletion
+        if (path.startsWith("/api/v1/rooms") && HttpMethod.DELETE.equals(method)) {
+            return true;
+        }
+        // Food item deletion
+        if (path.startsWith("/api/v1/food") && HttpMethod.DELETE.equals(method)) {
+            return true;
+        }
+        // Payment refunds
+        if (path.startsWith("/api/v1/billing") && path.endsWith("/refund")) {
+            return true;
+        }
+        // Simulate notification event
+        if (path.startsWith("/api/v1/notifications/simulate-event")) {
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isStaffOrAdminEndpoint(String path, HttpMethod method) {
+        // Room creation, updates, and operational status transitions
+        if (path.startsWith("/api/v1/rooms") && (HttpMethod.POST.equals(method) || HttpMethod.PUT.equals(method) || HttpMethod.PATCH.equals(method))) {
+            return true;
+        }
+        // Food item creation, updates, and availability toggles (except batch lookup)
+        if (path.startsWith("/api/v1/food") && !path.contains("/batch") &&
+                (HttpMethod.POST.equals(method) || HttpMethod.PUT.equals(method) || HttpMethod.PATCH.equals(method))) {
+            return true;
+        }
+        // Warehouse inventory management & stock updates
+        if (path.startsWith("/api/v1/inventory") && (HttpMethod.POST.equals(method) || HttpMethod.PUT.equals(method) || HttpMethod.PATCH.equals(method))) {
+            return true;
+        }
+        // Kitchen order ticket (KOT) status advancement by staff
+        if (path.startsWith("/api/v1/room-service/orders") && (HttpMethod.PATCH.equals(method) || (HttpMethod.PUT.equals(method) && path.endsWith("/status")))) {
+            return true;
+        }
+        // Direct notification dispatching
+        if (path.startsWith("/api/v1/notifications/send-direct")) {
+            return true;
+        }
+        return false;
+    }
+
     private Mono<Void> unauthorizedResponse(ServerWebExchange exchange, String message) {
+        return buildErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "Unauthorized", message);
+    }
+
+    private Mono<Void> forbiddenResponse(ServerWebExchange exchange, String message) {
+        return buildErrorResponse(exchange, HttpStatus.FORBIDDEN, "Forbidden", message);
+    }
+
+    private Mono<Void> buildErrorResponse(ServerWebExchange exchange, HttpStatus status, String error, String message) {
         ServerHttpResponse response = exchange.getResponse();
-        response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        response.setStatusCode(status);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-        // Preserve CORS headers on error responses so browser clients (e.g. Vite React on 5173) can read the 401
         String origin = exchange.getRequest().getHeaders().getOrigin();
-        if (origin != null) {
+        if (origin != null && isAllowedOrigin(origin)) {
             response.getHeaders().set(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin);
             response.getHeaders().set(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
         }
 
         String json = String.format(
-                "{\"success\":false,\"status\":401,\"error\":\"Unauthorized\",\"message\":\"%s\",\"timestamp\":\"%s\"}",
-                message, LocalDateTime.now()
+                "{\"success\":false,\"status\":%d,\"error\":\"%s\",\"message\":\"%s\",\"timestamp\":\"%s\"}",
+                status.value(), error, message, LocalDateTime.now()
         );
 
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         DataBuffer buffer = response.bufferFactory().wrap(bytes);
         return response.writeWith(Mono.just(buffer));
+    }
+
+    private boolean isAllowedOrigin(String origin) {
+        return ALLOWED_ORIGINS.contains(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
     }
 
     @Override

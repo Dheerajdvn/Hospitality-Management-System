@@ -16,9 +16,12 @@ import {
   Check
 } from 'lucide-react';
 
-const DiningMenu = ({ cart = [], setCart, onOrderPlaced, onNavigate }) => {
+const DiningMenu = ({ cart = [], setCart, onOrderPlaced, onNavigate, bookings = [] }) => {
   const { isStaff, isAdmin } = useAuth();
   const isStaffMode = isStaff && !isAdmin;
+
+  // Active reservation matching guest's booking
+  const activeBooking = bookings?.find((b) => b.status === 'CONFIRMED' || b.paymentStatus === 'PAID') || bookings?.[0];
 
   const [selectedHotelId, setSelectedHotelId] = useState(1);
   const [menuItems, setMenuItems] = useState([]);
@@ -26,7 +29,8 @@ const DiningMenu = ({ cart = [], setCart, onOrderPlaced, onNavigate }) => {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [dietaryFilter, setDietaryFilter] = useState('ALL');
   const [availabilityFilter, setAvailabilityFilter] = useState('ALL'); // 'ALL' | 'AVAILABLE' | '86'
-  const [roomNumber, setRoomNumber] = useState('101');
+  const [customRoomNumber, setCustomRoomNumber] = useState('');
+  const roomNumber = customRoomNumber || activeBooking?.roomNumber || '101';
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [placedOrder, setPlacedOrder] = useState(null);
   const [toastNotice, setToastNotice] = useState('');
@@ -99,10 +103,10 @@ const DiningMenu = ({ cart = [], setCart, onOrderPlaced, onNavigate }) => {
   const handlePlaceOrder = async () => {
     if (cart.length === 0) return;
     const orderPayload = {
-      bookingId: 1,
+      bookingId: activeBooking?.id || 1,
       hotelId: selectedHotelId,
-      roomId: 1,
-      roomNumber,
+      roomId: activeBooking?.roomId || 1,
+      roomNumber: roomNumber || activeBooking?.roomNumber || '101',
       items: cart.map((i) => ({ foodItemId: i.id, quantity: i.quantity, unitPrice: i.price, foodItemName: i.name, notes: i.notes || '' })),
       specialInstructions,
     };
@@ -656,7 +660,7 @@ const DiningMenu = ({ cart = [], setCart, onOrderPlaced, onNavigate }) => {
                     <input 
                       type="text" 
                       value={roomNumber} 
-                      onChange={(e) => setRoomNumber(e.target.value)}
+                      onChange={(e) => setCustomRoomNumber(e.target.value)}
                       className="input-luxury"
                       style={{ padding: '8px 12px', fontSize: '0.9rem' }}
                       placeholder="e.g. 101, 201"

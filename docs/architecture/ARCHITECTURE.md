@@ -15,11 +15,13 @@ The system adheres strictly to the **Database-per-Service pattern**, **Perimeter
 ```mermaid
 graph TD
     Client["React 18 + Vite Frontend Portal (:5173)"]
-    Gateway["Spring Cloud API Gateway (:8080)<br/>Netty / Reactive WebFlux / JWT Filter"]
+    Gateway["Spring Cloud API Gateway (:8080)<br/>Netty / Reactive WebFlux / LoadBalancer / JWT Filter"]
+    Eureka["Spring Cloud Netflix Eureka Server (:8761)<br/>Service Registry & Health Discovery"]
     
     Client -->|REST / CORS| Gateway
+    Gateway -.->|Dynamic lb:// Resolution| Eureka
 
-    subgraph "Core Business Microservices"
+    subgraph "Core Business Microservices (Registered Eureka Clients)"
         Auth["Auth Service (:8081)<br/>JJWT 512-bit / BCrypt"]
         Customer["Customer Service (:8082)<br/>Profiles / KYC Validation"]
         Hotel["Hotel Service (:8083)<br/>Catalog / Search Spec"]
@@ -32,16 +34,27 @@ graph TD
         Notification["Notification Service (:8090)<br/>Multi-Channel Dispatcher"]
     end
 
-    Gateway -->|/api/v1/auth/**| Auth
-    Gateway -->|/api/v1/customers/**| Customer
-    Gateway -->|/api/v1/hotels/**| Hotel
-    Gateway -->|/api/v1/rooms/**| Room
-    Gateway -->|/api/v1/bookings/**| Booking
-    Gateway -->|/api/v1/food/**| Food
-    Gateway -->|/api/v1/room-service/**| RSM
-    Gateway -->|/api/v1/billing/**| Billing
-    Gateway -->|/api/v1/inventory/**| Inventory
-    Gateway -->|/api/v1/notifications/**| Notification
+    Auth -.->|Heartbeat / Registry| Eureka
+    Customer -.->|Heartbeat / Registry| Eureka
+    Hotel -.->|Heartbeat / Registry| Eureka
+    Room -.->|Heartbeat / Registry| Eureka
+    Booking -.->|Heartbeat / Registry| Eureka
+    Food -.->|Heartbeat / Registry| Eureka
+    RSM -.->|Heartbeat / Registry| Eureka
+    Billing -.->|Heartbeat / Registry| Eureka
+    Inventory -.->|Heartbeat / Registry| Eureka
+    Notification -.->|Heartbeat / Registry| Eureka
+
+    Gateway ==>|lb://auth-service| Auth
+    Gateway ==>|lb://customer-service| Customer
+    Gateway ==>|lb://hotel-service| Hotel
+    Gateway ==>|lb://room-service| Room
+    Gateway ==>|lb://booking-service| Booking
+    Gateway ==>|lb://food-service| Food
+    Gateway ==>|lb://room-service-management| RSM
+    Gateway ==>|lb://billing-service| Billing
+    Gateway ==>|lb://inventory-service| Inventory
+    Gateway ==>|lb://notification-service| Notification
 
     subgraph "Persistence & Caching"
         PG[("PostgreSQL 16<br/>10 Isolated Databases")]
@@ -69,6 +82,8 @@ To guarantee loose coupling and prevent cross-domain database contention, each m
 
 | Microservice | Port | PostgreSQL Database | Core Entities & Tables |
 |---|---|---|---|
+| **eureka-server** | 8761 | In-Memory Registry | Netflix Eureka Service Registry & Discovery Server |
+| **api-gateway** | 8080 | Netty WebFlux | Spring Cloud Gateway, LoadBalancer dynamic `lb://` router |
 | **auth-service** | 8081 | `hms_auth_db` | `users`, `roles`, `user_roles` |
 | **customer-service** | 8082 | `hms_customer_db` | `customers` |
 | **hotel-service** | 8083 | `hms_hotel_db` | `hotels` + Redis cache `hotel_cache` |
@@ -84,7 +99,12 @@ To guarantee loose coupling and prevent cross-domain database contention, each m
 
 ## 4. Inter-Service Communication Patterns
 
-### A. Synchronous (OpenFeign + Apache HttpClient 5)
+### A. Dynamic Service Discovery & Load Balancing (Spring Cloud Netflix Eureka)
+All microservices register as Eureka clients (`http://localhost:8761/eureka/`).
+- **Client-Side Load Balancing**: Spring Cloud Gateway resolves routes dynamically using `lb://<service-name>` (backed by Spring Cloud LoadBalancer).
+- **Heartbeat & Self-Healing**: Services issue periodic 30-second heartbeats. Eureka evicts unhealthy instances automatically to guarantee traffic reaches healthy nodes.
+
+### B. Synchronous (OpenFeign + Apache HttpClient 5)
 Declarative REST clients are used for strong real-time operational validation:
 1. **Room $\to$ Hotel**: Validates that target hotel is active prior to room creation.
 2. **Food $\to$ Hotel**: Validates property existence before menu item creation.
@@ -92,10 +112,13 @@ Declarative REST clients are used for strong real-time operational validation:
 4. **Room Service Mgmt $\to$ Booking**: Validates that the guest has an active booking.
 5. **Billing $\to$ Booking**: Triggers booking confirmation upon payment success.
 
-### B. Asynchronous (Kafka / Event Bus)
+### C. Asynchronous (Kafka / Canonical Event Bus)
 For decoupled side-effects:
 1. `hms.booking.events`: Emitted when a booking is created, confirmed, or expired. Consumed by `notification-service` to dispatch confirmation emails/SMS.
-2. `hms.payment.events`: Emitted when payment succeeds or fails.
+2. `hms.payment.events`: Emitted when payment succeeds or fails. Consumed by `booking-service` and `notification-service`.
+3. `hms.food.events`: Emitted for kitchen dining updates.
+4. `hms.roomservice.events`: Emitted for KOT states. Consumed by `inventory-service` for automatic stock deduction.
+5. `hms.inventory.events`: Emitted for stock threshold alerts.
 
 ---
 

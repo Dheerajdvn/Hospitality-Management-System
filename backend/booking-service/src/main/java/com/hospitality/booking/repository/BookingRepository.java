@@ -38,6 +38,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("excludeStatus") BookingStatus excludeStatus);
 
     /**
+     * Serializes concurrent booking attempts for the same room in PostgreSQL
+     * using transaction-scoped advisory lock. Automatically released on commit/rollback.
+     */
+    @Query(value = "SELECT 1 FROM (SELECT pg_advisory_xact_lock(:roomId)) as lock_alias", nativeQuery = true)
+    Integer acquireRoomAdvisoryLock(@Param("roomId") Long roomId);
+
+    /**
      * Finds bookings whose temporary hold has expired (e.g. status = PENDING_PAYMENT and holdExpiresAt <= now).
      */
     @Query("SELECT b FROM Booking b WHERE b.status = :status AND b.holdExpiresAt <= :now")

@@ -8,8 +8,9 @@ This document outlines the ordered implementation plan to construct the Hospital
 
 ```mermaid
 graph TD
-    S1[1. Folder Structure Setup] --> S2[2. Infrastructure Config Docker/MySQL/Kafka/Redis]
-    S2 --> S3[3. Auth & User Service :8081]
+    S1[1. Folder Structure Setup] --> S2[2. Infrastructure Config Docker/Postgres/Kafka/Redis]
+    S2 --> S2B[2b. Netflix Eureka Discovery Server :8761]
+    S2B --> S3[3. Auth & User Service :8081]
     S3 --> S4[4. Customer Service :8082]
     S4 --> S5[5. Hotel Service + Redis Cache :8083]
     S5 --> S6[6. Room Service :8084]
@@ -20,7 +21,7 @@ graph TD
     S10 --> S11[11. Inventory Service :8089]
     S11 --> S12[12. Notification Service Kafka Consumer :8090]
     S12 --> S13[13. Spring Cloud API Gateway :8080]
-    S13 --> S14[14. React Frontend - Setup & Shell]
+    S13 --> S14[14. React Frontend - Setup & Shell :5173]
     S14 --> S15[15. React Customer Portal & Booking Flow]
     S15 --> S16[16. React Admin & Operations Dashboard]
     S16 --> S17[17. End-to-End Inter-Service Integration]
@@ -38,14 +39,22 @@ graph TD
 - Created structured subdirectories for all 11 backend microservices, `frontend/hospitality-ui`, `infrastructure/` (docker, kafka, redis, mysql), and `docs/`.
 
 ### Phase 2: Infrastructure Configuration
-- **MySQL Initialization Script** (`init-databases.sql`):
+- **PostgreSQL Initialization Script** (`init-databases.sql`):
   - Pre-creates 10 isolated schemas: `hms_auth_db`, `hms_customer_db`, `hms_hotel_db`, `hms_room_db`, `hms_booking_db`, `hms_food_db`, `hms_rsm_db`, `hms_billing_db`, `hms_inventory_db`, `hms_notification_db`.
   - Grants permissions to `hms_user` (`hms_password`).
 - **Kafka Setup**:
-  - Apache Kafka broker (and Zookeeper or KRaft) configured for local development.
-  - Definition of topic creation scripts for `hms.booking.events`, `hms.payment.events`, `hms.food.events`, `hms.roomservice.events`, `hms.inventory.events`.
+  - Apache Kafka 3.7 KRaft broker configured for local development.
+  - Canonical topic initialization script for `hms.booking.events`, `hms.payment.events`, `hms.food.events`, `hms.roomservice.events`, `hms.inventory.events`.
 - **Redis Setup**:
-  - Redis 7.x server configuration with persistent storage and key eviction policy (`volatile-lru`).
+  - Redis 7 server configuration with persistent storage and key eviction policy (`volatile-lru`).
+
+### Phase 2b: Service Registry & Discovery (`eureka-server` :8761)
+- **Why it exists**: Provides dynamic service registration and discovery, eliminating hardcoded service URLs and enabling elastic load balancing.
+- **Responsibilities**:
+  - Standalone Netflix Eureka Server instance running on port 8761.
+  - Maintains real-time registry of all 10 domain microservices and API Gateway via periodic 30s heartbeats.
+  - Dynamic resolution endpoint (`http://localhost:8761/eureka/`).
+- **Web Dashboard**: `http://localhost:8761` showing live status of all registered instances.
 
 ### Phase 3: Auth / User Service (`auth-service` :8081)
 - **Why it exists**: Centralized identity and access management (IAM), preventing credentials from traversing multiple downstream services.
@@ -177,10 +186,10 @@ graph TD
 
 ### Phase 13: Spring Cloud API Gateway (`api-gateway` :8080)
 - **Responsibilities**:
-  - Reverse proxy routing for all 10 domain microservices.
+  - Reverse proxy routing for all 10 domain microservices with dynamic Eureka `lb://<service-name>` resolution.
   - JWT Authentication Filter validating token headers before routing.
   - Header enrichment: injects `X-User-Id`, `X-User-Role`, `X-User-Email` for downstream services.
-  - Global CORS configuration for `http://localhost:3000`.
+  - Global CORS configuration for `http://localhost:5173` and `http://127.0.0.1:5173`.
 
 ### Phase 14-16: ReactJS Frontend Application (`frontend/hospitality-ui`)
 - **Structure**:

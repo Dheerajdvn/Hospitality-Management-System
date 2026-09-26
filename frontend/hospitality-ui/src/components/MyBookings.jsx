@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, CheckCircle2, Download, ShieldCheck, MapPin } from 'lucide-react';
 import { api } from '../api/apiClient';
+import { useAuth } from '../context/AuthContext';
 
 const MyBookings = ({ bookings = [] }) => {
+  const { user } = useAuth();
   const [activeBookings, setActiveBookings] = useState([
     {
       id: 1,
@@ -25,7 +27,16 @@ const MyBookings = ({ bookings = [] }) => {
 
   useEffect(() => {
     const loadCustomerBookings = async () => {
-      const data = await api.getBookingsByCustomer(3);
+      let customerId = user?.id || 1;
+      try {
+        if (user?.id) {
+          const profile = await api.getCustomerByUserId(user.id);
+          if (profile?.id) customerId = profile.id;
+        }
+      } catch {
+        // use customerId
+      }
+      const data = await api.getBookingsByCustomer(customerId);
       if (data && data.length > 0) {
         const mapped = data.map((b) => ({
           id: b.id,
@@ -49,7 +60,7 @@ const MyBookings = ({ bookings = [] }) => {
       }
     };
     loadCustomerBookings();
-  }, [bookings]);
+  }, [bookings, user]);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '30px 20px 80px' }}>

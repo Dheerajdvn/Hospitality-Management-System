@@ -2,7 +2,7 @@
 
 ## 1. Role in the Hospitality Platform
 In hotel booking platforms, read operations (browsing hotels, searching by city, inspecting amenities) outnumber write operations (creating or updating hotel records) by roughly 9 to 1.
-Redis serves as an in-memory key-value cache positioned between `hotel-service` and MySQL `hms_hotel_db`.
+Redis serves as an in-memory key-value cache positioned between `hotel-service` and PostgreSQL `hms_hotel_db`.
 
 ## 2. Configuration & Eviction
 - **Memory Ceiling**: `maxmemory 256mb`
@@ -15,5 +15,5 @@ Redis serves as an in-memory key-value cache positioned between `hotel-service` 
 - If the Redis container experiences network latency or fails completely:
   1. Connection timeout in Spring Boot is set to 500ms.
   2. Spring Cache's `CacheErrorHandler` catches connection exceptions.
-  3. Instead of returning HTTP 500 to the customer, the application logs a warning and falls back to querying MySQL directly.
+  3. Instead of returning HTTP 500 to the customer, the application logs a warning and falls back to querying PostgreSQL directly.
   4. Once Redis recovers, caching resumes automatically.

@@ -47,3 +47,12 @@ logging:
   level:
     com.hospitality.auth: DEBUG
     org.springframework.security: INFO
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true

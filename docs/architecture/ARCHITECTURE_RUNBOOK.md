@@ -6,11 +6,12 @@ Grand Luxe is an enterprise-grade, distributed microservices hospitality platfor
 
 ### Key Architectural Pillars
 - **Database-per-Service**: 10 decoupled business microservices, each with its own dedicated PostgreSQL schema/database. Services communicate strictly via REST (OpenFeign) or asynchronous event streams (Kafka). No cross-database joins or shared tables.
+- **Service Registry & Discovery**: Spring Cloud Netflix Eureka Server (port 8761) manages runtime registration and health heartbeats. All services register as Eureka clients, allowing API Gateway and Feign to dynamically route traffic using `lb://<service-name>` virtual URLs.
 - **Event-Driven Architecture (EDA)**: Apache Kafka (KRaft mode, port 9092) with 5 canonical topics handling core lifecycle events: Booking Created/Expired, Payment Settled/Failed, Room Service Requested, and Inventory Stock Movement/Low-Stock Alerts.
-- **Edge Security & Gateway Routing**: Spring Cloud Gateway (Netty Reactive, port 8080) validates HS512 JWTs, injects verified downstream identity headers (`X-User-Id`, `X-User-Email`, `X-User-Roles`, `X-User-Role`, `X-User-Name`), and applies global CORS for the Vite React UI.
+- **Edge Security & Gateway Routing**: Spring Cloud Gateway (Netty Reactive, port 8080) validates HS512 JWTs, injects verified downstream identity headers (`X-User-Id`, `X-User-Email`, `X-User-Roles`, `X-User-Role`, `X-User-Name`), applies global CORS for the Vite React UI, and load-balances via Eureka discovery.
 - **Cache-Aside Pattern**: Redis 7 on port 6379 caching hot hotel catalog queries with Jackson polymorphic serialization and TTL invalidation on hotel metadata updates.
 - **Optimistic Concurrency & Double-Booking Prevention**: Room inventory protected by Hibernate `@Version` optimistic locking combined with atomic mathematical date overlap SQL queries (`checkIn < :checkOut AND checkOut > :checkIn`).
-- **DevOps Tooling & Observability**: Integrated `spring-boot-devtools` for live reloading and `micrometer-registry-prometheus` exposing metrics at `/actuator/prometheus` on all 11 microservices.
+- **DevOps Tooling & Observability**: Integrated `spring-boot-devtools` for live reloading and `micrometer-registry-prometheus` exposing metrics at `/actuator/prometheus` on all microservices.
 
 ---
 
@@ -18,7 +19,8 @@ Grand Luxe is an enterprise-grade, distributed microservices hospitality platfor
 
 | Service Name | Port | Database / Engine | Key Architectural Responsibility |
 | :--- | :---: | :--- | :--- |
-| **api-gateway** | `8080` | Netty / Reactive WebFlux | Perimeter reverse proxy, JWT verification, CORS policy, header injection |
+| **eureka-server** | `8761` | In-Memory Registry | Netflix Eureka service discovery server, instance registration & heartbeats |
+| **api-gateway** | `8080` | Netty / Reactive WebFlux | Perimeter reverse proxy, JWT verification, CORS policy, Eureka dynamic `lb://` routing |
 | **auth-service** | `8081` | PostgreSQL (`hms_auth_db`) | RBAC, BCrypt password hashing, 512-bit HS512 JWT token issuance |
 | **customer-service** | `8082` | PostgreSQL (`hms_customer_db`) | Guest profiles, KYC validation endpoint via Feign |
 | **hotel-service** | `8083` | PostgreSQL (`hms_hotel_db`) + Redis 7 | Hotel catalog, JPA Specifications, Redis Cache-Aside layer |
@@ -90,8 +92,9 @@ A dedicated PowerShell script `check-health.ps1` verifies the health of all tier
 Checks:
 1. Docker container status (`hms-postgres`, `hms-redis`, `hms-kafka`).
 2. Kafka topic registration (verifies 5 topics inside the `hms-kafka` container).
-3. Microservices Actuator health (`/actuator/health` on ports 8080–8090).
-4. Frontend portal accessibility on port 5173.
+3. Eureka Discovery Server health (`http://localhost:8761`).
+4. Microservices Actuator health (`/actuator/health` on ports 8080–8090).
+5. Frontend portal accessibility on port 5173.
 
 ---
 
@@ -102,9 +105,14 @@ Checks:
 # 1. Start Docker Infrastructure (Postgres, Redis, Kafka)
 docker compose -f infrastructure/docker/docker-compose-infra.yml up -d
 
-# 2. Launch All Microservices & Frontend
+# 2. Launch All Microservices, Eureka Server & Frontend
 .\start-all.ps1
 ```
+
+### Access Points
+- **Guest & Admin Portal**: `http://localhost:5173`
+- **Eureka Discovery Dashboard**: `http://localhost:8761`
+- **API Gateway Entry**: `http://localhost:8080`
 
 ### Inspecting Health
 ```powershell
@@ -113,7 +121,7 @@ docker compose -f infrastructure/docker/docker-compose-infra.yml up -d
 
 ### Stopping the Platform
 ```powershell
-# Stop backend microservices & frontend:
+# Stop backend microservices, gateway, eureka & frontend:
 .\stop-all.ps1
 
 # Stop everything including Docker containers:
@@ -154,3 +162,9 @@ docker compose -f infrastructure/docker/docker-compose-infra.yml up -d
 **Answer**:
 - KRaft (Kafka Raft Metadata mode) replaces the separate ZooKeeper cluster with an integrated Raft consensus mechanism within the Kafka controllers.
 - This eliminates metadata synchronization bottlenecks, reduces memory and container overhead, enables rapid failover, and represents the modern production standard for Apache Kafka (since Kafka 3.3+).
+
+### Q5: Why use Spring Cloud Netflix Eureka for Service Discovery and dynamic routing?
+**Answer**:
+- **Dynamic Service Registration**: In elastic cloud and containerized environments, IP addresses and ports change dynamically. Hardcoding IPs/ports creates brittle configurations.
+- **Client-Side Load Balancing**: Services and the API Gateway use `lb://<service-name>` virtual URIs. Spring Cloud LoadBalancer interrogates Eureka's local cache to distribute incoming requests across available instances with zero hardware load balancer overhead.
+- **Self-Healing & Heartbeats**: Eureka clients send 30-second heartbeats (`eureka.client.service-url`). If an instance crashes or fails health checks, Eureka evicts it from the active registry, ensuring failover without manual intervention.

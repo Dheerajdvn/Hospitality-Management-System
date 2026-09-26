@@ -2,16 +2,17 @@
 
 ## 1. Executive Summary & Design Principles
 
-The **Hospitality Management System (HMS)** is a production-grade, distributed microservices platform engineered using **Java 21**, **Spring Boot 3.x**, **Spring Cloud**, **Apache Kafka**, **Redis**, and **MySQL**, fronted by a **ReactJS** single-page application.
+The **Hospitality Management System (HMS)** is a production-grade, distributed microservices platform engineered using **Java 21**, **Spring Boot 3.3.4**, **Spring Cloud 2023.0.3 (Netflix Eureka, Gateway, LoadBalancer)**, **Apache Kafka (KRaft mode)**, **Redis 7**, and **PostgreSQL 16**, fronted by a **React 18** luxury single-page application.
 
 ### Core Architectural Principles
-1. **Database-per-Service**: Each microservice strictly encapsulates its own database schema. No service directly queries another service's database.
-2. **Selective Synchronous vs. Asynchronous Communication**:
+1. **Database-per-Service**: Each microservice strictly encapsulates its own PostgreSQL database schema. No service directly queries another service's database.
+2. **Service Discovery & Dynamic Routing**: Spring Cloud Netflix Eureka Server (Port 8761) maintains real-time instance registries and health heartbeats. Spring Cloud Gateway and Feign route dynamically using `lb://<service-name>` virtual URIs.
+3. **Selective Synchronous vs. Asynchronous Communication**:
    - **REST (OpenFeign)** is used when an immediate, synchronous response or strict transactional validation is required (e.g., checking room availability before confirming a reservation, verifying customer existence).
    - **Apache Kafka** is used for decoupled, event-driven domain events (e.g., `BookingCreated`, `BookingConfirmed`, `BookingCancelled`, `PaymentCompleted`, `FoodOrderCreated`, `RoomServiceRequested`, `InventoryUpdated`).
-3. **Cache-Aside with Redis**: Read-heavy operations (hotel catalog, search filters, room types) are aggressively cached using the Cache-Aside pattern with TTL and proactive cache invalidation on write/update.
-4. **Idempotency & Concurrency Safety**: Strict concurrency controls (optimistic locking `@Version`, pessimistic database locking, and unique composite constraints) prevent double bookings under peak traffic.
-5. **Interview-Ready Explainability**: Clean, realistic, and maintainable implementation without extraneous frameworks, designed specifically for a 3–4+ years Java Backend Developer technical discussion.
+4. **Cache-Aside with Redis**: Read-heavy operations (hotel catalog, search filters, room types) are aggressively cached using the Cache-Aside pattern with TTL and proactive cache invalidation on write/update.
+5. **Idempotency & Concurrency Safety**: Strict concurrency controls (optimistic locking `@Version`, pessimistic database locking, and unique composite constraints) prevent double bookings under peak traffic.
+6. **Interview-Ready Explainability**: Clean, realistic, and maintainable implementation without extraneous frameworks, designed specifically for a 3–4+ years Java Backend Developer technical discussion.
 
 ---
 
@@ -20,39 +21,45 @@ The **Hospitality Management System (HMS)** is a production-grade, distributed m
 ```mermaid
 flowchart TB
     subgraph Clients ["Client Layer"]
-        CustomerUI["React Customer Portal (Port 3000)"]
-        AdminUI["React Admin Dashboard (Port 3000)"]
+        PortalUI["React 18 Luxury Portal (Port 5173)<br/>• Guest Reservation & Dining<br/>• Operations & Admin Kanban"]
+    end
+
+    subgraph Discovery ["Service Discovery Tier"]
+        Eureka["Eureka Discovery Server (Port 8761)<br/>• Service Registry<br/>• Heartbeat Health Checks"]
     end
 
     subgraph Gateway ["Edge & Gateway Layer"]
-        APIGateway["Spring Cloud Gateway (Port 8080)<br/>• JWT Authentication Filter<br/>• Global CORS & Rate Limiting<br/>• Dynamic Routing & Load Balancing"]
+        APIGateway["Spring Cloud Gateway (Port 8080)<br/>• JWT Authentication Filter<br/>• Global CORS & Header Injection<br/>• Dynamic lb:// Load Balancing"]
     end
 
     Clients -->|HTTP / REST (JSON)| APIGateway
+    APIGateway -.->|Fetch Active Registry| Eureka
 
     subgraph CoreServices ["Core Domain Microservices (Port Range: 8081 - 8090)"]
         AuthSvc["auth-service (:8081)<br/>• JWT Token Issuance<br/>• User Accounts & RBAC"]
-        CustSvc["customer-service (:8082)<br/>• Customer Profiles<br/>• Loyalty & Preferences"]
+        CustSvc["customer-service (:8082)<br/>• Customer Profiles<br/>• KYC Validation"]
         HotelSvc["hotel-service (:8083)<br/>• Hotel Metadata & Search<br/>• Redis Cache-Aside"]
-        RoomSvc["room-service (:8084)<br/>• Room Inventory & Pricing<br/>• Status Management"]
+        RoomSvc["room-service (:8084)<br/>• Room Inventory & Pricing<br/>• @Version Lock"]
         BookingSvc["booking-service (:8085)<br/>• Booking Orchestration<br/>• Double-Booking Prevention"]
-        FoodSvc["food-service (:8086)<br/>• Restaurant Menu Catalog<br/>• Food Order Handling"]
-        RSMgtSvc["room-service-management (:8087)<br/>• Housekeeping / Cleaning<br/>• Towels / Amenities Requests"]
-        BillingSvc["billing-service (:8088)<br/>• Bill Aggregator & Invoicing<br/>• Simulated Payment Gateway"]
+        FoodSvc["food-service (:8086)<br/>• Restaurant Menu Catalog<br/>• Batch Item Resolution"]
+        RSMgtSvc["room-service-management (:8087)<br/>• In-Room Dining & KOT<br/>• Operations State Machine"]
+        BillingSvc["billing-service (:8088)<br/>• 18% GST Invoicing<br/>• Simulated Payment Gateway"]
         InventorySvc["inventory-service (:8089)<br/>• Hotel Supplies & Linen<br/>• Low-Stock Auditing"]
-        NotifSvc["notification-service (:8090)<br/>• Simulated Alert Center<br/>• Email / SMS Event Logs"]
+        NotifSvc["notification-service (:8090)<br/>• Multi-Channel Dispatch<br/>• Email / SMS Event Logs"]
     end
 
-    APIGateway -->|Route /api/v1/auth/**| AuthSvc
-    APIGateway -->|Route /api/v1/customers/**| CustSvc
-    APIGateway -->|Route /api/v1/hotels/**| HotelSvc
-    APIGateway -->|Route /api/v1/rooms/**| RoomSvc
-    APIGateway -->|Route /api/v1/bookings/**| BookingSvc
-    APIGateway -->|Route /api/v1/food/**| FoodSvc
-    APIGateway -->|Route /api/v1/room-service/**| RSMgtSvc
-    APIGateway -->|Route /api/v1/billing/**| BillingSvc
-    APIGateway -->|Route /api/v1/inventory/**| InventorySvc
-    APIGateway -->|Route /api/v1/notifications/**| NotifSvc
+    CoreServices -.->|Heartbeat Registration| Eureka
+
+    APIGateway ==>|lb://auth-service| AuthSvc
+    APIGateway ==>|lb://customer-service| CustSvc
+    APIGateway ==>|lb://hotel-service| HotelSvc
+    APIGateway ==>|lb://room-service| RoomSvc
+    APIGateway ==>|lb://booking-service| BookingSvc
+    APIGateway ==>|lb://food-service| FoodSvc
+    APIGateway ==>|lb://room-service-management| RSMgtSvc
+    APIGateway ==>|lb://billing-service| BillingSvc
+    APIGateway ==>|lb://inventory-service| InventorySvc
+    APIGateway ==>|lb://notification-service| NotifSvc
 
     subgraph SyncComm ["Synchronous Inter-Service Calls (OpenFeign)"]
         BookingSvc -.->|Check Room Availability / Lock| RoomSvc
@@ -88,17 +95,17 @@ flowchart TB
     end
     HotelSvc <-->|Read / Write / Invalidate| RedisCluster
 
-    subgraph Storage ["Independent Schemas (MySQL 8.0)"]
-        DB_Auth[(auth_db)]
-        DB_Cust[(customer_db)]
-        DB_Hotel[(hotel_db)]
-        DB_Room[(room_db)]
-        DB_Booking[(booking_db)]
-        DB_Food[(food_db)]
-        DB_RSM[(rsm_db)]
-        DB_Billing[(billing_db)]
-        DB_Inv[(inventory_db)]
-        DB_Notif[(notification_db)]
+    subgraph Storage ["Independent Schemas (PostgreSQL 16)"]
+        DB_Auth[(hms_auth_db)]
+        DB_Cust[(hms_customer_db)]
+        DB_Hotel[(hms_hotel_db)]
+        DB_Room[(hms_room_db)]
+        DB_Booking[(hms_booking_db)]
+        DB_Food[(hms_food_db)]
+        DB_RSM[(hms_rsm_db)]
+        DB_Billing[(hms_billing_db)]
+        DB_Inv[(hms_inventory_db)]
+        DB_Notif[(hms_notification_db)]
     end
 
     AuthSvc --- DB_Auth

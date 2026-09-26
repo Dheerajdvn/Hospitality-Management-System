@@ -155,7 +155,8 @@ export const api = {
       const registeredUsers = JSON.parse(localStorage.getItem('registered_users') || '[]');
       const match = registeredUsers.find((r) => r.username.toLowerCase() === u || r.email.toLowerCase() === u);
       if (match) {
-        if (match.password !== password) {
+        const matchesPass = match.passwordHash ? (match.passwordHash === btoa(password || '')) : (match.password === password);
+        if (!matchesPass) {
           return { success: false, message: 'Incorrect password for registered account.' };
         }
         return {
@@ -182,13 +183,13 @@ export const api = {
       const res = await client.post('/auth/register', registerData);
       return res.data;
     } catch {
-      // Mock Fallback with Local Persistence
+      // Mock Fallback with Local Persistence (store hashed representation, never plaintext)
       const registeredUsers = JSON.parse(localStorage.getItem('registered_users') || '[]');
       const newUser = {
         id: Math.floor(10 + Math.random() * 90),
         username: registerData.username,
         email: registerData.email,
-        password: registerData.password,
+        passwordHash: btoa(registerData.password || ''),
         fullName: registerData.fullName,
         phone: registerData.phone,
         roles: ['ROLE_CUSTOMER'],
@@ -251,7 +252,7 @@ export const api = {
 
   async updateDishAvailability(dishId, isAvailable) {
     try {
-      const res = await client.patch(`/food/items/${dishId}/availability`, { isAvailable });
+      const res = await client.patch(`/food/${dishId}/availability?available=${Boolean(isAvailable)}`);
       return res.data;
     } catch {
       const item = MOCK_FOOD_ITEMS.find((f) => f.id === dishId);
@@ -296,7 +297,11 @@ export const api = {
       const res = await client.post('/bookings', bookingData);
       return res.data;
     } catch (err) {
-      console.warn('Booking service call failed, providing fallback reservation:', err.message);
+      if (err.response) {
+        const errorMsg = err.response.data?.message || err.response.data?.error || `Booking failed with status ${err.response.status}`;
+        throw new Error(errorMsg);
+      }
+      console.warn('Booking service offline, providing demo reservation fallback:', err.message);
       const dateNum = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const randCode = Math.floor(1000 + Math.random() * 9000);
       return {
@@ -304,7 +309,7 @@ export const api = {
         data: {
           id: Math.floor(100 + Math.random() * 900),
           bookingNumber: `BK-${dateNum}-${randCode}`,
-          customerId: bookingData.customerId || 3,
+          customerId: bookingData.customerId || 1,
           roomId: bookingData.roomId,
           checkInDate: bookingData.checkInDate,
           checkOutDate: bookingData.checkOutDate,
@@ -326,13 +331,36 @@ export const api = {
     }
   },
 
+  // Customer Profiles
+  async getCustomerByUserId(userId) {
+    try {
+      const res = await client.get(`/customers/user/${userId}`);
+      return res.data.data;
+    } catch {
+      return null;
+    }
+  },
+
+  async getCustomerProfile(customerId) {
+    try {
+      const res = await client.get(`/customers/${customerId}`);
+      return res.data.data;
+    } catch {
+      return null;
+    }
+  },
+
   // Billing & Payments
   async processPayment(paymentData) {
     try {
       const res = await client.post('/billing/pay', paymentData);
       return res.data;
     } catch (err) {
-      console.warn('Billing service call failed, generating simulated payment receipt:', err.message);
+      if (err.response) {
+        const errorMsg = err.response.data?.message || err.response.data?.error || `Payment processing failed with status ${err.response.status}`;
+        throw new Error(errorMsg);
+      }
+      console.warn('Billing service offline, generating simulated payment receipt:', err.message);
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       return {
         success: true,
